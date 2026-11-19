@@ -17,7 +17,7 @@ type PendingSummon = {
   catIndex: number;
 };
 
-const EXIT_MS = 440;
+const EXIT_MS = 260;
 
 export function useCatApparition() {
   const [apparition, setApparition] = useState<Apparition | null>(null);

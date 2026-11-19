@@ -1,35 +1,61 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect } from 'react';
 
 const SOUND_SRC = '/sounds/cat-sound.mp3';
 const VOLUME = 0.65;
 
+type AudioContextConstructor = typeof AudioContext;
+
+let audioContext: AudioContext | null = null;
+let bufferPromise: Promise<AudioBuffer | null> | null = null;
+
+function getAudioContext(): AudioContext | null {
+  if (typeof window === 'undefined') return null;
+  if (audioContext && audioContext.state !== 'closed') return audioContext;
+
+  const ContextClass =
+    window.AudioContext ??
+    (window as typeof window & { webkitAudioContext?: AudioContextConstructor })
+      .webkitAudioContext;
+
+  if (!ContextClass) return null;
+
+  audioContext = new ContextClass();
+  return audioContext;
+}
+
+function loadBuffer(context: AudioContext): Promise<AudioBuffer | null> {
+  if (!bufferPromise) {
+    bufferPromise = fetch(SOUND_SRC)
+      .then((response) => (response.ok ? response.arrayBuffer() : null))
+      .then((data) => (data ? context.decodeAudioData(data) : null))
+      .catch(() => null);
+  }
+
+  return bufferPromise;
+}
+
 export function useCatSound() {
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-
   useEffect(() => {
-    const audio = new Audio(SOUND_SRC);
-    audio.preload = 'auto';
-    audio.volume = VOLUME;
-    audio.load();
-    audioRef.current = audio;
-
-    return () => {
-      audio.pause();
-      audio.currentTime = 0;
-      audioRef.current = null;
-    };
+    const context = getAudioContext();
+    if (context) void loadBuffer(context);
   }, []);
 
   return useCallback(() => {
-    const audio = audioRef.current;
-    if (!audio) return;
+    const context = getAudioContext();
+    if (!context) return;
 
-    try {
-      audio.currentTime = 0;
-      const playback = audio.play();
-      if (playback) void playback.catch(() => undefined);
-    } catch {
-      return;
-    }
+    void context.resume();
+
+    void loadBuffer(context).then((buffer) => {
+      if (!buffer) return;
+
+      const source = context.createBufferSource();
+      const gain = context.createGain();
+      gain.gain.value = VOLUME;
+      source.buffer = buffer;
+      source.connect(gain);
+      gain.connect(context.destination);
+      source.start(0);
+    });
   }, []);
 }
