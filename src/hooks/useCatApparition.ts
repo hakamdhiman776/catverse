@@ -17,8 +17,6 @@ type PendingSummon = {
   catIndex: number;
 };
 
-const EXIT_MS = 260;
-
 export function useCatApparition() {
   const [apparition, setApparition] = useState<Apparition | null>(null);
   const [phase, setPhase] = useState<CatPhase>('entering');
@@ -27,7 +25,6 @@ export function useCatApparition() {
   const pendingRef = useRef<PendingSummon | null>(null);
   const nextCatRef = useRef(0);
   const keyRef = useRef(0);
-  const exitTimerRef = useRef<number | null>(null);
 
   const revealPending = useCallback(() => {
     const pending = pendingRef.current;
@@ -62,17 +59,16 @@ export function useCatApparition() {
       }
 
       setPhase('exiting');
-
-      if (exitTimerRef.current !== null) return;
-
-      exitTimerRef.current = window.setTimeout(() => {
-        exitTimerRef.current = null;
-        activeRef.current = null;
-        revealPending();
-      }, EXIT_MS);
     },
     [revealPending],
   );
+
+  const finishExit = useCallback(() => {
+    if (!activeRef.current) return;
+
+    activeRef.current = null;
+    revealPending();
+  }, [revealPending]);
 
   useEffect(() => {
     let frame = 0;
@@ -103,14 +99,5 @@ export function useCatApparition() {
     };
   }, []);
 
-  useEffect(() => {
-    return () => {
-      if (exitTimerRef.current !== null) {
-        window.clearTimeout(exitTimerRef.current);
-        exitTimerRef.current = null;
-      }
-    };
-  }, []);
-
-  return { apparition, phase, summon };
+  return { apparition, phase, summon, finishExit };
 }

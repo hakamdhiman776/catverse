@@ -1,9 +1,14 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 
 const SOUND_SRC = '/sounds/cat-sound.mp3';
 const VOLUME = 0.65;
 
 type AudioContextConstructor = typeof AudioContext;
+
+type ScheduledPlayback = {
+  source: AudioBufferSourceNode;
+  startsAt: number;
+};
 
 let audioContext: AudioContext | null = null;
 let bufferPromise: Promise<AudioBuffer | null> | null = null;
@@ -35,16 +40,32 @@ function loadBuffer(context: AudioContext): Promise<AudioBuffer | null> {
 }
 
 export function useCatSound() {
+  const scheduledRef = useRef<ScheduledPlayback | null>(null);
+
   useEffect(() => {
     const context = getAudioContext();
     if (context) void loadBuffer(context);
+
+    return () => {
+      const scheduled = scheduledRef.current;
+      if (scheduled) {
+        scheduled.source.stop();
+        scheduledRef.current = null;
+      }
+    };
   }, []);
 
-  return useCallback(() => {
+  return useCallback((delay = 0) => {
     const context = getAudioContext();
     if (!context) return;
 
     void context.resume();
+
+    const scheduled = scheduledRef.current;
+    if (scheduled && context.currentTime < scheduled.startsAt) {
+      scheduled.source.stop();
+    }
+    scheduledRef.current = null;
 
     void loadBuffer(context).then((buffer) => {
       if (!buffer) return;
@@ -55,7 +76,16 @@ export function useCatSound() {
       source.buffer = buffer;
       source.connect(gain);
       gain.connect(context.destination);
-      source.start(0);
+
+      const startsAt = context.currentTime + Math.max(delay, 0);
+      source.start(startsAt);
+      scheduledRef.current = { source, startsAt };
+
+      source.onended = () => {
+        if (scheduledRef.current?.source === source) {
+          scheduledRef.current = null;
+        }
+      };
     });
   }, []);
 }
